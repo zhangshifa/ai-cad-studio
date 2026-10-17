@@ -1,11 +1,32 @@
+# Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
+env/
+
+# CAD 产物（大文件，按需入库或走 LFS）
+*.step
+*.stp
+*.stl
+*.obj
+*.gltf
+*.glb
 build/
 dist/
-*.spec
-.idea/
-.vscode/
+
+# 依赖与缓存
+node_modules/
+.cache/
 *.log
-config.json
+
+# 环境变量 / 密钥（绝不入库）
+.env
+*.cmd
+*.local
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
