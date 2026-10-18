@@ -1,7 +1,31 @@
 # AI-CAD 智能建模与动画仿真工具 — 产品设计与技术规格说明书
 
-> 版本：v0.1（草案） · 起草日期：2026-10-17
-> 状态：需求与设计基线（待评审） · 许可证：私有仓库，内部使用
+> 版本：v0.2 · 更新：2026-10-18
+> 状态：已实现可运行 MVP（自然语言建模 + STL/STEP 导出） · 许可证：私有仓库，内部使用
+
+---
+
+## 快速开始（已实现 MVP）
+
+本项目已落地一个**可本地运行**的最小可用版本：用自然语言描述零件 → AI 生成参数化模型 → 浏览器三维预览 → 导出 STL（3D 打印）/ STEP（CAD 互换）。
+
+环境要求：Windows / macOS / Linux，Python 3.10+。
+
+```bash
+# 1) 创建虚拟环境并安装几何内核（cadquery / OpenCascade）
+python -m venv venv
+venv\Scripts\pip install cadquery        # Windows
+# 或：source venv/bin/activate && pip install cadquery   # macOS / Linux
+
+# 2) 启动本地服务
+venv\Scripts\python.exe run.py           # 默认 http://127.0.0.1:8000
+
+# 3) 浏览器打开 http://127.0.0.1:8000
+```
+
+- **配置 AI**：点击界面右上角“设置”，填写 DeepSeek（或任意兼容 OpenAI 的）API Key 与接口地址；也可设置环境变量 `DEEPSEEK_API_KEY` 免填。
+- **未配置密钥**：自动进入“演示模式”，使用示例模型演示完整链路。
+- **3D 打印**：点击“下载 STL”，交给切片软件/打印机即可；“接入 3D 打印机”为后续扩展（见路线图）。
 
 ---
 
@@ -361,6 +385,48 @@ ai-cad-studio/
 3. **性能**：大型装配体实时显示与求解需轻化/增量策略。
 4. **工程图合规**：GB/ISO 标注细节多，需逐步对齐标准。
 5. **FEA 深度**：是否自研或对接开源求解器，待 M5 评估。
+
+---
+
+## 使用指南
+
+### 目录结构
+
+```
+ai-cad-studio/
+├── run.py              # 启动入口
+├── config.json         # 用户配置（api_key 等，已 gitignore）
+├── ai_cad/            # 后端核心（全部中文注释）
+│   ├── config.py      # 配置加载 / 保存
+│   ├── prompts.py     # 中文 AI 系统提示词
+│   ├── examples.py    # 演示模式示例模型
+│   ├── ai_client.py   # DeepSeek / OpenAI 兼容客户端
+│   ├── generator.py   # 沙箱执行代码 + STL/STEP 导出
+│   └── server.py      # 本地 Web 服务与 API
+└── web/index.html     # Three.js 操作界面
+```
+
+### 自然语言建模流程
+
+1. 在左侧输入框用中文描述零件（如“一个外径 60、中心孔 12、6 个均布 M4 螺栓孔的法兰盘”）。
+2. 点击“生成模型”：后端把描述发给 AI → AI 输出 cadquery 代码 → 在受限命名空间执行 → 导出 STL/STEP。
+3. 右侧实时预览；下方展示 AI 生成的代码（可复制 / 二次修改）。
+4. 点击“下载 STL / STEP”导出文件。
+
+### AI 配置
+
+- 界面“设置”：填写 `api_key`、`base_url`（默认 `https://api.deepseek.com`）、`model`（默认 `deepseek-chat`）。
+- 或环境变量：`DEEPSEEK_API_KEY=xxx`（优先级最高）。
+- 安全：配置与密钥保存在本地 `config.json`（已加入 .gitignore），不进入版本库。
+
+### 安全说明
+
+执行 AI 生成的代码存在固有风险。本工具已做收敛：仅保留必需内置函数、重写 `__import__` 仅放行 cadquery / math / numpy 白名单、导出文件用临时文件即时删除。仍建议在可信网络与本地环境运行。
+
+### 3D 打印扩展（路线图中）
+
+- 当前已能导出 STL（切片软件通用格式），可直接进入打印流程。
+- 后续：在 `web/index.html` 的“发送到打印机”按钮上对接打印机 API / OctoPrint / 局域网打印机，完成“自然语言建模 → 实体生成”闭环。
 
 ---
 
