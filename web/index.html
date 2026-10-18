@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI-CAD · 自然语言建模工具</title>
+  <style>
+    :root {
+      --bg: #0f1115; --panel: #171a21; --line: #262b36;
+      --txt: #e6e9ef; --sub: #9aa3b2; --accent: #4f8cff; --ok: #36c275; --err: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--txt);
+      font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+    header { display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    header .right { display: flex; gap: 8px; align-items: center; }
+    .btn { background: var(--accent); color: #fff; border: none; border-radius: 6px;
+      padding: 8px 14px; cursor: pointer; font-size: 13px; }
+    .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--txt); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .layout { display: flex; height: calc(100% - 53px); }
+    .left { width: 360px; padding: 14px; border-right: 1px solid var(--line);
+      display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+    .right { flex: 1; position: relative; }
+    canvas { display: block; width: 100%; height: 100%; }
+    textarea { width: 100%; min-height: 90px; resize: vertical; background: #0c0e13;
+      color: var(--txt); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+      font-size: 13px; line-height: 1.5; }
+    label { font-size: 12px; color: var(--sub); }
+    .hint { font-size: 12px; color: var(--sub); line-height: 1.5; }
+    .banner { padding: 8px 12px; border-radius: 6px; font-size: 12px; display: none; }
+    .banner.demo { background: #2a2410; color: #ffd479; border: 1px solid #5a4a14; }
+    .banner.err { background: #2a1414; color: var(--err); border: 1px solid #5a1f1f; }
+    .examples { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { font-size: 12px; padding: 5px 9px; border: 1px solid var(--line);
+      border-radius: 14px; cursor: pointer; color: var(--sub); }
+    .chip:hover { color: var(--txt); border-color: var(--accent); }
+    .code-box { background: #0c0e13; border: 1px solid var(--line); border-radius: 8px;
+      padding: 10px; font-family: Consolas, monospace; font-size: 12px; color: #b9c4d6;
+      white-space: pre-wrap; max-height: 220px; overflow: auto; }
+    .exports { display: flex; gap: 8px; }
+    .overlay { position: absolute; left: 12px; bottom: 12px; font-size: 12px; color: var(--sub);
+      background: rgba(0,0,0,.35); padding: 6px 10px; border-radius: 6px; }
+    /* 设置弹窗 */
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none;
+      align-items: center; justify-content: center; z-index: 10; }
+    .modal.show { display: flex; }
+    .modal .card { width: 420px; max-width: 92vw; background: var(--panel);
+      border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+    .modal h2 { margin: 0 0 12px; font-size: 15px; }
+    .modal .row { margin-bottom: 12px; }
+    .modal input { width: 100%; background: #0c0e13; color: var(--txt);
+      border: 1px solid var(--line); border-radius: 6px; padding: 9px; font-size: 13px; }
+    .modal .actions { display: flex; justify-content: flex-end; gap: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AI-CAD · 自然语言建模工具</h1>
+    <div class="right">
+      <span id="keyState" class="hint"></span>
+      <button class="btn ghost" id="settingsBtn">设置</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="left">
+      <label>用自然语言描述你要建的模型：</label>
+      <textarea id="prompt" placeholder="例如：一个外径 60、中心孔 12、6 个均布 M4 螺栓孔的法兰盘"></textarea>
+      <div class="examples" id="examples">
+        <span class="chip" data-q="一个带六个螺栓孔的法兰盘">法兰盘</span>
+        <span class="chip" data-q="一个 12 齿的齿轮">齿轮</span>
+        <span class="chip" data-q="一个带底的圆杯">杯子</span>
+      </div>
+      <button class="btn" id="genBtn">生成模型</button>
+      <div id="banner" class="banner"></div>
+      <label>生成的代码（可复制/二次修改）：</label>
+      <div class="code-box" id="codeView">（尚未生成）</div>
+      <div class="exports">
+        <button class="btn ghost" id="dlStl" disabled>下载 STL</button>
+        <button class="btn ghost" id="dlStep" disabled>下载 STEP</button>
+        <button class="btn ghost" id="printBtn" disabled title="后续扩展：接入 3D 打印机完成实体生成">发送到打印机（待接入）</button>
+      </div>
+      <div class="hint">
+        提示：未填写 API Key 时进入“演示模式”，使用示例模型演示完整链路。
+        配置 Key 后，自然语言将真实驱动 AI 生成参数化模型。
+      </div>
+    </div>
+
+    <div class="right">
+      <canvas id="view"></canvas>
+      <div class="overlay">鼠标左键旋转 · 右键平移 · 滚轮缩放</div>
+    </div>
+  </div>
+
+  <!-- 设置弹窗 -->
+  <div class="modal" id="modal">
+    <div class="card">
+      <h2>AI 设置</h2>
+      <div class="row">
+        <label>API Key（本地保存，不入库）</label>
+        <input id="cfgKey" type="password" placeholder="sk-... 或 ghp_..." autocomplete="off" />
+      </div>
+      <div class="row">
+        <label>接口地址（兼容 OpenAI）</label>
+        <input id="cfgBase" type="text" placeholder="https://api.deepseek.com" />
+      </div>
+      <div class="row">
+        <label>模型名</label>
+        <input id="cfgModel" type="text" placeholder="deepseek-chat" />
+      </div>
+      <div class="actions">
+        <button class="btn ghost" id="cfgCancel">取消</button>
+        <button class="btn" id="cfgSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+    // ---------- 3D 场景 ----------
+    const canvas = document.getElementById('view');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setClearColor(0x0f1115, 1);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+    camera.position.set(120, 90, 120);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+    dir.position.set(1, 1.4, 1);
+    scene.add(dir);
+
+    const grid = new THREE.GridHelper(200, 20, 0x333a47, 0x222831);
+    scene.add(grid);
+
+    let currentMesh = null;
+
+    function resize() {
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (canvas.width !== w || canvas.height !== h) {
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+    }
+    function animate() { resize(); controls.update(); renderer.render(scene, camera); requestAnimationFrame(animate); }
+    animate();
+
+    function showModel(buffer) {
+      const geom = new STLLoader().parse(buffer);
+      geom.computeVertexNormals();
+      geom.computeBoundingBox();
+      const box = geom.boundingBox;
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      geom.translate(-center.x, -center.y, -center.z);
+
+      if (currentMesh) { scene.remove(currentMesh); currentMesh.geometry.dispose(); }
+      const mat = new THREE.MeshStandardMaterial({ color: 0x9fc1ff, metalness: 0.1, roughness: 0.6 });
+      currentMesh = new THREE.Mesh(geom, mat);
+      scene.add(currentMesh);
+
+      // 将模型缩放/居中到合适视野
+      const size = new THREE.Vector3(); box.getSize(size);
+      const radius = Math.max(size.x, size.y, size.z) * 1.4 || 50;
+      controls.target.set(0, 0, 0);
+      camera.position.set(radius, radius * 0.8, radius);
+      camera.near = radius / 100; camera.far = radius * 20;
+      camera.updateProjectionMatrix();
+    }
+
+    // ---------- 工具函数 ----------
+    function b64ToArrayBuffer(b64) {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr.buffer;
+    }
+    function downloadBlob(blob, name) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = name; a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // ---------- DOM 与交互 ----------
+    const $ = (id) => document.getElementById(id);
+    const banner = $('banner');
+    let lastSTL = null, lastSTEP = null;
+
+    function setBanner(text, type) {
+      banner.textContent = text; banner.className = 'banner ' + (type || '');
+      banner.style.display = text ? 'block' : 'none';
+    }
+
+    $('examples').addEventListener('click', (e) => {
+      const q = e.target.getAttribute('data-q');
+      if (q) $('prompt').value = q;
+    });
+
+    $('genBtn').addEventListener('click', async () => {
+      const prompt = $('prompt').value.trim();
+      if (!prompt) { setBanner('请输入建模描述。', 'err'); return; }
+      $('genBtn').disabled = true; setBanner('生成中…');
+      try {
+        const resp = await fetch('/api/generate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt })
+        });
+        const data = await resp.json();
+        if (data.error) { setBanner(data.error, 'err'); $('genBtn').disabled = false; return; }
+        $('codeView').textContent = data.code;
+        lastSTL = data.stl; lastSTEP = data.step;
+        showModel(b64ToArrayBuffer(data.stl));
+        $('dlStl').disabled = false;
+        $('dlStep').disabled = !data.step;
+        $('printBtn').disabled = false;
+        if (data.used_demo) setBanner('当前为演示模式（未配置密钥），已使用示例模型。配置 Key 后可真实驱动 AI。', 'demo');
+        else setBanner('生成成功，可在右侧预览并导出。', 'demo');
+      } catch (err) {
+        setBanner('请求失败：' + err, 'err');
+      } finally {
+        $('genBtn').disabled = false;
+      }
+    });
+
+    $('dlStl').addEventListener('click', () => {
+      if (lastSTL) downloadBlob(new Blob([b64ToArrayBuffer(lastSTL)], { type: 'model/stl' }), 'model.stl');
+    });
+    $('dlStep').addEventListener('click', () => {
+      if (lastSTEP) downloadBlob(new Blob([b64ToArrayBuffer(lastSTEP)], { type: 'application/step' }), 'model.step');
+    });
+    $('printBtn').addEventListener('click', () => {
+      setBanner('3D 打印机接入为后续扩展：导出 STL 后，将对接切片/打印机完成实体生成。', 'demo');
+    });
+
+    // ---------- 设置弹窗 ----------
+    const modal = $('modal');
+    async function loadConfig() {
+      const r = await fetch('/api/config'); const c = await r.json();
+      $('keyState').textContent = c.api_key_set ? ('已配置 · ' + c.api_key_masked) : '未配置密钥（演示模式）';
+      $('cfgBase').value = c.base_url || ''; $('cfgModel').value = c.model || '';
+    }
+    $('settingsBtn').addEventListener('click', async () => {
+      await loadConfig(); modal.classList.add('show');
+    });
+    $('cfgCancel').addEventListener('click', () => modal.classList.remove('show'));
+    $('cfgSave').addEventListener('click', async () => {
+      const body = {
+        api_key: $('cfgKey').value, base_url: $('cfgBase').value, model: $('cfgModel').value
+      };
+      const r = await fetch('/api/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      if (r.ok) { modal.classList.remove('show'); await loadConfig(); setBanner('设置已保存。', 'demo'); }
+    });
+
+    loadConfig();
+  </script>
+</body>
+</html>
