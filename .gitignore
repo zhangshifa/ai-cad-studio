@@ -26,6 +26,10 @@ node_modules/
 *.cmd
 *.local
 
+# 用户配置（可能含 API 密钥，禁止入库）
+config.json
+config.local.json
+
 # 编辑器
 .vscode/
 .idea/
